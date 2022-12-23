@@ -7,6 +7,7 @@
 #endif
 
 #include "sbuffer.h"
+#include "datamgr.h"
 
 #include "config.h"
 
@@ -26,6 +27,7 @@ struct sbuffer {
     sbuffer_node_t* head;
     sbuffer_node_t* tail;
     bool closed;
+    pthread_rwlock_t rwlock;
     pthread_mutex_t mutex;
 };
 
@@ -46,6 +48,7 @@ sbuffer_t* sbuffer_create() {
     buffer->head = NULL;
     buffer->tail = NULL;
     buffer->closed = false;
+    ASSERT_ELSE_PERROR(pthread_rwlock_init(&buffer->rwlock, NULL) == 0);
     ASSERT_ELSE_PERROR(pthread_mutex_init(&buffer->mutex, NULL) == 0);
 
     return buffer;
@@ -55,17 +58,45 @@ void sbuffer_destroy(sbuffer_t* buffer) {
     assert(buffer);
     // make sure it's empty
     assert(buffer->head == buffer->tail);
+    ASSERT_ELSE_PERROR(pthread_rwlock_destroy(&buffer->rwlock) == 0);
     ASSERT_ELSE_PERROR(pthread_mutex_destroy(&buffer->mutex) == 0);
     free(buffer);
 }
 
-void sbuffer_lock(sbuffer_t* buffer) {
+int sbuffer_lock(sbuffer_t* buffer, bool connMgrOrNot, bool storageManagerOrNot, sensor_data_t* dataLocatie, DBCONN* conn) {
     assert(buffer);
-    ASSERT_ELSE_PERROR(pthread_mutex_lock(&buffer->mutex) == 0);
-}
-void sbuffer_unlock(sbuffer_t* buffer) {
-    assert(buffer);
-    ASSERT_ELSE_PERROR(pthread_mutex_unlock(&buffer->mutex) == 0);
+    if (connMgrOrNot) {
+        ASSERT_ELSE_PERROR(pthread_rwlock_wrlock(&buffer->rwlock) == 0);
+        int ret = sbuffer_insert_first(buffer, dataLocatie);
+        assert(ret == SBUFFER_SUCCESS);
+        ASSERT_ELSE_PERROR(pthread_rwlock_unlock(&buffer->rwlock) == 0);
+        return 0;
+    }
+    else {
+        ASSERT_ELSE_PERROR(pthread_rwlock_rdlock(&buffer->rwlock) == 0);
+        if (!sbuffer_is_empty(buffer)) {
+            if (storageManagerOrNot && !dataLocatie->strgMgr) {
+                storagemgr_insert_sensor(conn, dataLocatie->id, dataLocatie->value, dataLocatie->ts);
+                dataLocatie->strgMgr = true;
+            }
+            else if (!dataLocatie->dataMgr) {
+                datamgr_process_reading(dataLocatie);
+                dataLocatie->dataMgr = true;
+            }
+            ASSERT_ELSE_PERROR(pthread_mutex_lock(&buffer->mutex) == 0);
+            if (dataLocatie != NULL) {
+                if (dataLocatie->strgMgr && dataLocatie->dataMgr) {
+                    sbuffer_remove_last(buffer);
+                } 
+            } ASSERT_ELSE_PERROR(pthread_mutex_unlock(&buffer->mutex) == 0);
+        }
+        else if (sbuffer_is_empty(buffer) && sbuffer_is_closed(buffer)) {
+            ASSERT_ELSE_PERROR(pthread_rwlock_unlock(&buffer->rwlock) == 0);
+            return 1;
+        }
+        ASSERT_ELSE_PERROR(pthread_rwlock_unlock(&buffer->rwlock) == 0);
+        return 0;
+    }
 }
 
 bool sbuffer_is_empty(sbuffer_t* buffer) {
@@ -97,7 +128,16 @@ int sbuffer_insert_first(sbuffer_t* buffer, sensor_data_t const* data) {
     return SBUFFER_SUCCESS;
 }
 
-sensor_data_t sbuffer_remove_last(sbuffer_t* buffer) {
+sensor_data_t* sbuffer_get_last(sbuffer_t* buffer) {
+    ASSERT_ELSE_PERROR(pthread_mutex_lock(&buffer->mutex) == 0);
+    assert(buffer);
+    assert(buffer->head != NULL);
+    sensor_data_t* temp = &(buffer->tail->data);
+    ASSERT_ELSE_PERROR(pthread_mutex_unlock(&buffer->mutex) == 0);
+    return temp;
+}
+
+void sbuffer_remove_last(sbuffer_t* buffer) {
     assert(buffer);
     assert(buffer->head != NULL);
 
@@ -108,13 +148,12 @@ sensor_data_t sbuffer_remove_last(sbuffer_t* buffer) {
         assert(removed_node == buffer->tail);
     }
     buffer->tail = removed_node->prev;
-    sensor_data_t ret = removed_node->data;
     free(removed_node);
-
-    return ret;
 }
 
 void sbuffer_close(sbuffer_t* buffer) {
+    ASSERT_ELSE_PERROR(pthread_mutex_lock(&buffer->mutex) == 0);
     assert(buffer);
     buffer->closed = true;
+    ASSERT_ELSE_PERROR(pthread_mutex_unlock(&buffer->mutex) == 0);
 }

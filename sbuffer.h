@@ -9,6 +9,7 @@
 #endif
 
 #include "config.h"
+#include "sensor_db.h"
 
 #define SBUFFER_FAILURE -1
 #define SBUFFER_SUCCESS 0
@@ -36,8 +37,8 @@ bool sbuffer_is_closed(sbuffer_t* buffer);
         internal to the buffer, users should not
         be concerned with it!
 */
-void sbuffer_lock(sbuffer_t* buffer);
-void sbuffer_unlock(sbuffer_t* buffer);
+
+int sbuffer_lock(sbuffer_t* buffer, bool connMgrOrNot, bool storageManagerOrNot, sensor_data_t* dataLocatie, DBCONN* conn);
 
 /**
  * Inserts the sensor data in 'data' at the start of 'buffer' (at the 'head')
@@ -47,11 +48,13 @@ void sbuffer_unlock(sbuffer_t* buffer);
  */
 int sbuffer_insert_first(sbuffer_t* buffer, sensor_data_t const* data);
 
+sensor_data_t* sbuffer_get_last(sbuffer_t* buffer);
+
 /**
  * Removes & returns the last measurement in the buffer (at the 'tail')
  * \return the removed measurement
  */
-sensor_data_t sbuffer_remove_last(sbuffer_t* buffer);
+void sbuffer_remove_last(sbuffer_t* buffer);
 
 /**
  * Closes the buffer. This signifies that no more data will be inserted.

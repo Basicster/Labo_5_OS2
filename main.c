@@ -32,18 +32,9 @@ static void* datamgr_run(void* buffer) {
 
     // datamgr loop
     while (true) {
-        sbuffer_lock(buffer);
-        if (!sbuffer_is_empty(buffer)) {
-            sensor_data_t data = sbuffer_remove_last(buffer);
-            datamgr_process_reading(&data);
-            // everything nice & processed
-        } else if (sbuffer_is_closed(buffer)) {
-            // buffer is both empty & closed: there will never be data again
-            sbuffer_unlock(buffer);
-            break;
-        }
-        // give the others a chance to lock the mutex
-        sbuffer_unlock(buffer);
+        sensor_data_t* dataLocatie = sbuffer_get_last(buffer);
+        int temp = sbuffer_lock(buffer, false, false, dataLocatie, NULL);
+        if (temp == 1) break;
     }
 
     datamgr_free();
@@ -57,18 +48,9 @@ static void* storagemgr_run(void* buffer) {
 
     // storagemgr loop
     while (true) {
-        sbuffer_lock(buffer);
-        if (!sbuffer_is_empty(buffer)) {
-            sensor_data_t data = sbuffer_remove_last(buffer);
-            storagemgr_insert_sensor(db, data.id, data.value, data.ts);
-            // everything nice & processed
-        } else if (sbuffer_is_closed(buffer)) {
-            // buffer is both empty & closed: there will never be data again
-            sbuffer_unlock(buffer);
-            break;
-        }
-        // give the others a chance to lock the mutex
-        sbuffer_unlock(buffer);
+        sensor_data_t* dataLocatie = sbuffer_get_last(buffer);
+        int temp = sbuffer_lock(buffer, false, true, dataLocatie, db);
+        if (temp == 1) break;
     }
 
     storagemgr_disconnect(db);
@@ -95,9 +77,7 @@ int main(int argc, char* argv[]) {
     // main server loop
     connmgr_listen(port_number, buffer);
 
-    sbuffer_lock(buffer);
     sbuffer_close(buffer);
-    sbuffer_unlock(buffer);
 
     pthread_join(datamgr_thread, NULL);
     pthread_join(storagemgr_thread, NULL);
