@@ -32,8 +32,7 @@ static void* datamgr_run(void* buffer) {
 
     // datamgr loop
     while (true) {
-        sensor_data_t* dataLocatie = sbuffer_get_last(buffer);
-        int temp = sbuffer_lock(buffer, false, false, dataLocatie, NULL);
+        int temp = sbuffer_read(buffer, 0, NULL);
         if (temp == 1) break;
     }
 
@@ -48,8 +47,7 @@ static void* storagemgr_run(void* buffer) {
 
     // storagemgr loop
     while (true) {
-        sensor_data_t* dataLocatie = sbuffer_get_last(buffer);
-        int temp = sbuffer_lock(buffer, false, true, dataLocatie, db);
+        int temp = sbuffer_read(buffer, 1, db);
         if (temp == 1) break;
     }
 

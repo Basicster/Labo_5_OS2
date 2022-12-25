@@ -30,15 +30,8 @@ bool sbuffer_is_empty(sbuffer_t* buffer);
 
 bool sbuffer_is_closed(sbuffer_t* buffer);
 
-/*
-    Gain/release exclusive access to the buffer
-    TODO: these functions should not exist!
-        All buffer synchronization should be
-        internal to the buffer, users should not
-        be concerned with it!
-*/
-
-int sbuffer_lock(sbuffer_t* buffer, bool connMgrOrNot, bool storageManagerOrNot, sensor_data_t* dataLocatie, DBCONN* conn);
+void sbuffer_connmgr(sbuffer_t* buffer, sensor_data_t* dataLocatie);
+int sbuffer_read(sbuffer_t* buffer, int defReader, DBCONN* conn);
 
 /**
  * Inserts the sensor data in 'data' at the start of 'buffer' (at the 'head')
@@ -47,8 +40,6 @@ int sbuffer_lock(sbuffer_t* buffer, bool connMgrOrNot, bool storageManagerOrNot,
  * \return the current status of the buffer
  */
 int sbuffer_insert_first(sbuffer_t* buffer, sensor_data_t const* data);
-
-sensor_data_t* sbuffer_get_last(sbuffer_t* buffer);
 
 /**
  * Removes & returns the last measurement in the buffer (at the 'tail')
